@@ -1,0 +1,32 @@
+services:
+  web:
+    # 生产不现场 build，拉预构建镜像
+    image: yourname/fe-depoly:1.0.0
+    container_name: fe-depoly-prod
+    ports:
+      - "80:80"
+    restart: always
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 256M
+        reservations:
+          cpus: "0.25"
+          memory: 64M
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "10"
+    networks:
+      - frontend
+
+networks:
+  frontend:
+    driver: bridge
