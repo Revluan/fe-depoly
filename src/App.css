@@ -1,0 +1,11 @@
+.app-main {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.app-main p {
+  color: #6b7280;
+  font-size: 0.9rem;
+}
