@@ -1,59 +1,87 @@
+# CI 工作流：质量检查 + 构建产物
+# 作用：在 PR 和主干 push 时跑 lint / type-check / test / build，
+#       失败则阻塞合并，保证主分支永远是绿的。
 name: CI
 
+# ──────────────────────────────────────────────────────────────
+# 触发条件：什么时候跑这个 workflow
+# ──────────────────────────────────────────────────────────────
 on:
+  # 1. 向 main 或 staging 提 PR 时触发（在 PR 检查里显示状态）
   pull_request:
     branches: [main, staging]
+  # 2. 直接 push 到 main 或 staging 时触发（PR 合入后跑一次完整 CI）
   push:
     branches: [main, staging]
 
-# 同一分支新提交取消旧运行
+# 同一分支新提交来了就取消旧 run，省 CI 额度
+# 例如：你连续 push 3 次到 main，只会跑最后一次，前两次被取消
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# 最小权限原则：默认只给读仓库内容的权限，不给写、不给 Pages、不发 PR
+# 防止 workflow 被篡改后干坏事
 permissions:
   contents: read
 
 jobs:
+  # ──────────────────────────────────────────────────────────────
+  # Job 1：质量检查（lint + 类型检查 + 测试）
+  # ──────────────────────────────────────────────────────────────
   quality:
     name: Lint · Type-check · Test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest # 跑在 GitHub 提供的 Ubuntu 虚拟机上
     steps:
+      # 拉代码到 runner 工作目录
       - name: Checkout
         uses: actions/checkout@v5
 
+      # 装 Node.js 24，并开启 npm 缓存（下次跑更快）
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
           node-version: '24'
-          cache: 'npm'
+          cache: 'npm' # 自动缓存 ~/.npm，依据 lockfile
 
+      # 严格按 lockfile 安装，不修改、不升级
+      # 比 npm install 快、更可靠 —— CI 里一律用它
       - name: Install dependencies
         run: npm ci
 
+      # ESLint 检查代码风格 / 潜在错误
       - name: Lint
         run: npm run lint
 
+      # TypeScript 类型检查（tsc --noEmit，只检查不产出）
       - name: Type-check
         run: npm run type-check
 
+      # 跑单元测试 + 生成覆盖率报告
       - name: Test
         run: npm run test -- --coverage
 
+      # 把覆盖率报告作为 artifact 上传，可在 Actions UI 下载
+      # if: always() —— 即使前面步骤失败也上传，方便排查
       - name: Upload coverage
         if: always()
         uses: actions/upload-artifact@v5
         with:
-          name: coverage-${{ github.ref_name }}
+          name: coverage-${{ github.ref_name }} # 例如 coverage-main
           path: coverage/
-          retention-days: 7
+          retention-days: 7 # 7 天后自动删除，省存储
 
+  # ──────────────────────────────────────────────────────────────
+  # Job 2：构建产物（staging / production 两个环境并行）
+  # ──────────────────────────────────────────────────────────────
   build:
     name: Build
-    needs: quality
+    needs: quality # 等 quality job 通过后才跑
     runs-on: ubuntu-latest
     strategy:
       matrix:
+        # 矩阵策略：env 取 staging 和 production 两个值
+        # 会并行启动 2 个 job：build(staging) 和 build(production)
         env: [staging, production]
     steps:
       - name: Checkout
@@ -68,12 +96,16 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Vite 根据 --mode 读取对应的 .env.<mode> 文件
+      # --mode staging   → 读 .env.staging
+      # --mode production → 读 .env.production
       - name: Build (${{ matrix.env }})
         run: npm run build -- --mode ${{ matrix.env }}
 
+      # 上传构建产物，后续 deploy workflow 可以下载使用
       - name: Upload build artifacts
         uses: actions/upload-artifact@v5
         with:
-          name: dist-${{ matrix.env }}
+          name: dist-${{ matrix.env }} # dist-staging / dist-production
           path: dist/
           retention-days: 7

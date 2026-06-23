@@ -1,15 +1,26 @@
+# 生产部署工作流
+# 作用：打 v*.*.* tag 时，自动把应用部署到 GitHub Pages（生产环境）
+#       通过 tag 触发而非 push，避免误操作直接上生产
 name: Deploy Production
 
+# ──────────────────────────────────────────────────────────────
+# 触发条件
+# ──────────────────────────────────────────────────────────────
 on:
+  # 1. push 形如 v1.0.0 / v0.2.3 的 tag 自动触发
+  #    通配符 v*.*.* 匹配 v主版本.次版本.修订号
   push:
     tags:
       - 'v*.*.*'
+  # 2. 手动触发：在 Actions UI 填入要部署的 tag（例如 v1.0.0）
+  #    用于回滚到旧版本 —— 输入旧 tag 重新部署
   workflow_dispatch:
     inputs:
       release:
         description: 'Release tag (e.g. v1.0.0)'
         required: true
 
+# 生产部署绝不取消正在跑的旧 run，避免半部署状态
 concurrency:
   group: deploy-production
   cancel-in-progress: false
@@ -23,10 +34,17 @@ jobs:
   deploy:
     name: Deploy to GitHub Pages (production)
     runs-on: ubuntu-latest
+    # 绑定到 "production" 环境
+    # 强烈建议在 Settings → Environments → production 里：
+    #   - 加 required reviewers（必须人工 approve 才部署）
+    #   - 限制只能从 main 分支部署
     environment:
       name: production
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
+      # 手动触发时 inputs.release 有值 → checkout 该 tag 对应的 commit
+      # tag 触发时 inputs.release 为空 → 用 github.ref（即触发的 tag 本身）
+      # 这样既能部署新 tag，也能回滚到任意旧 tag
       - name: Checkout
         uses: actions/checkout@v5
         with:
@@ -41,11 +59,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # --mode production 让 Vite 读 .env.production
       - name: Build
         run: npm run build -- --mode production
         env:
           VITE_APP_ENV: production
 
+      # 配置 Pages（enablement: true 自动开启，避免 404）
       - name: Setup Pages
         uses: actions/configure-pages@v6
         with:

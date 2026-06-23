@@ -1,14 +1,28 @@
+# 预发部署工作流
+# 作用：push 到 staging 分支时，自动把应用部署到 GitHub Pages（预发环境）
+#       供 QA / 产品在合并到生产前做最后验证
 name: Deploy Staging
 
+# ──────────────────────────────────────────────────────────────
+# 触发条件
+# ──────────────────────────────────────────────────────────────
 on:
+  # 1. push 到 staging 分支自动触发
   push:
     branches: [staging]
+  # 2. 手动触发：在 Actions UI 点 "Run workflow" 按钮
   workflow_dispatch:
 
+# 部署类 workflow 不要取消正在跑的旧 run
+# 否则可能把正在进行的部署砍断，留下半成品
 concurrency:
   group: deploy-staging
   cancel-in-progress: false
 
+# 部署到 Pages 需要的权限：
+# - contents: read   —— 读代码
+# - pages: write     —— 写 Pages 站点
+# - id-token: write  —— OIDC token，用于 deploy-pages 鉴权
 permissions:
   contents: read
   pages: write
@@ -18,8 +32,11 @@ jobs:
   deploy:
     name: Deploy to GitHub Pages (staging)
     runs-on: ubuntu-latest
+    # 绑定到 GitHub Environments 的 "staging" 环境
+    # 可以在 Settings → Environments → staging 里加：审批人、保护分支、环境变量
     environment:
       name: staging
+      # 把部署后的站点 URL 回写到 Actions UI 和部署记录
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - name: Checkout
@@ -34,21 +51,29 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # --mode staging 让 Vite 读 .env.staging
+      # 通过 env 把 VITE_APP_ENV 注入构建（也可直接在 .env.staging 里写）
       - name: Build
         run: npm run build -- --mode staging
         env:
           VITE_APP_ENV: staging
 
+      # 配置 GitHub Pages：自动为仓库创建 Pages site（首次开启时必需）
+      # enablement: true 表示如果仓库还没开 Pages，自动开
       - name: Setup Pages
         uses: actions/configure-pages@v6
         with:
           enablement: true
 
+      # 把 dist/ 打包成 Pages 部署专用的 artifact
+      # 这个 action 会把内容 tar 后上传，deploy-pages 才能正确解包
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5
         with:
           path: dist
 
+      # 真正执行部署：把上一步的 artifact 推到 GitHub Pages 服务器
+      # 输出 page_url，供上面 environment.url 使用
       - name: Deploy to GitHub Pages
         id: deploy
         uses: actions/deploy-pages@v5
