@@ -1,7 +1,10 @@
 services:
   web:
     # 生产不现场 build，拉预构建镜像
-    image: yourname/fe-depoly:1.0.0
+    # 阿里云 ACR（国内推荐）：tag 用实际推送的版本号，不要用 latest（除非 ACR 里真有 latest）
+    image: crpi-d8s0hxjvbntxh66b.cn-hangzhou.personal.cr.aliyuncs.com/cjdemo29/fe-depoly:1.0.0
+    # Docker Hub: yourname/fe-depoly:1.0.0
+    # GHCR: ghcr.io/yourname/fe-depoly:1.0.0
     container_name: fe-depoly-prod
     ports:
       - "80:80"

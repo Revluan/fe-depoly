@@ -9,6 +9,7 @@ function App() {
       <header className="app-header">
         <h1>FE Deploy</h1>
         <p>前端工程化实践项目 · 部署 / CI-CD / CDN / 缓存</p>
+        <p>docker test</p>
       </header>
       <main className="app-main">
         <button onClick={() => setCount((c) => c + 1)}>count is {count}</button>
