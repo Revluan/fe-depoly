@@ -1,0 +1,47 @@
+services:
+  web-v1:
+    image: crpi-d8s0hxjvbntxh66b.cn-hangzhou.personal.cr.aliyuncs.com/cjdemo29/fe-depoly:1.0.0
+    container_name: web-v1
+    restart: always
+    expose:
+      - "80"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    networks:
+      - canary-net
+
+  web-v2:
+    image: crpi-d8s0hxjvbntxh66b.cn-hangzhou.personal.cr.aliyuncs.com/cjdemo29/fe-depoly:1.0.1
+    container_name: web-v2
+    restart: always
+    expose:
+      - "80"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    networks:
+      - canary-net
+
+  # Nginx 反向代理(金丝雀分流)
+  nginx:
+    image: nginx:alpine
+    container_name: canary-nginx
+    restart: always
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - web-v1
+      - web-v2
+    networks:
+      - canary-net
+
+networks:
+  canary-net:
+    driver: bridge

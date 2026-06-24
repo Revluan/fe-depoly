@@ -1,0 +1,49 @@
+services:
+  # 蓝色环境(当前版本)
+  web-blue:
+    image: crpi-d8s0hxjvbntxh66b.cn-hangzhou.personal.cr.aliyuncs.com/cjdemo29/fe-depoly:1.0.0
+    container_name: web-blue
+    restart: always
+    expose:
+      - "80"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    networks:
+      - bg-net
+
+  # 绿色环境(新版本)
+  web-green:
+    image: crpi-d8s0hxjvbntxh66b.cn-hangzhou.personal.cr.aliyuncs.com/cjdemo29/fe-depoly:1.0.1
+    container_name: web-green
+    restart: always
+    expose:
+      - "80"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    networks:
+      - bg-net
+
+  # Nginx 反向代理(切换蓝绿)
+  nginx:
+    image: nginx:alpine
+    container_name: bg-nginx
+    restart: always
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - web-blue
+      - web-green
+    networks:
+      - bg-net
+
+networks:
+  bg-net:
+    driver: bridge
