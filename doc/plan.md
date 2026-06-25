@@ -54,11 +54,11 @@
 ### 阶段五：性能优化与监控（2 周）
 
 - [ ] 接入 Web Vitals 上报（LCP / CLS / INP）
-- [ ] 产物体积分析（rollup-plugin-visualizer）
+- [x] 产物体积分析（rollup-plugin-visualizer）👉 [doc/bundle-analysis.md](./bundle-analysis.md)
 - [ ] 代码分割与按需加载
 - [ ] Tree Shaking 与依赖外置
 - [ ] 图片资源优化（WebP / AVIF / 响应式图片）
-- [ ] 接入 Sentry / 自建错误监控
+- [x] 接入 Sentry / 自建错误监控 👉 [doc/sentry.md](./sentry.md)
 
 ### 阶段六：进阶工程化（持续）
 

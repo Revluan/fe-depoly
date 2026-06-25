@@ -10,6 +10,9 @@ build/
 .output/
 .turbo/
 
+# Bundle analysis
+stats.html
+
 # Cache
 .cache/
 .parcel-cache/

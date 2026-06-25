@@ -2,6 +2,7 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import { sentryVitePlugin } from '@sentry/vite-plugin'
+import { visualizer } from 'rollup-plugin-visualizer'
 import path from 'node:path'
 
 export default defineConfig(({ mode }) => {
@@ -11,6 +12,8 @@ export default defineConfig(({ mode }) => {
   // 只有 CI 注入了 Auth Token 才启用 Sentry 插件,避免本地构建乱上传
   const hasSentryToken = !!process.env.SENTRY_AUTH_TOKEN
   const enableSentryPlugin = isProduction && hasSentryToken
+  // 产物体积分析:仅 ANALYZE=true 时启用,避免每次 build 都生成 stats.html
+  const enableAnalyze = process.env.ANALYZE === 'true'
 
   return {
     base: '/',
@@ -34,6 +37,19 @@ export default defineConfig(({ mode }) => {
                 filesToDeleteAfterUpload: ['dist/**/*.map'],
               },
               telemetry: false,
+            }),
+          ]
+        : []),
+      // 产物体积可视化:生成 stats.html,用浏览器打开看每个模块占比
+      ...(enableAnalyze
+        ? [
+            visualizer({
+              filename: 'stats.html',
+              template: 'treemap',
+              gzipSize: true,
+              brotliSize: true,
+              // 不自动打开浏览器,CI 里也能用
+              open: false,
             }),
           ]
         : []),
