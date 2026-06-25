@@ -1,34 +1,67 @@
 /// <reference types="vitest" />
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
+import { sentryVitePlugin } from '@sentry/vite-plugin'
 import path from 'node:path'
 
-export default defineConfig({
-  // base: '/fe-depoly/',
-  base: '/',
-  plugins: [react()],
-  resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src'),
+export default defineConfig(({ mode }) => {
+  // 加载所有 env(含非 VITE_ 前缀的,如 SENTRY_AUTH_TOKEN)
+  const env = loadEnv(mode, process.cwd(), '')
+  const isProduction = mode === 'production'
+  // 只有 CI 注入了 Auth Token 才启用 Sentry 插件,避免本地构建乱上传
+  const hasSentryToken = !!process.env.SENTRY_AUTH_TOKEN
+  const enableSentryPlugin = isProduction && hasSentryToken
+
+  return {
+    base: '/',
+    plugins: [
+      react(),
+      // Sentry 插件:构建时上传 source map 到 Sentry,关联到 Release
+      // 仅在生产构建 + 有 Auth Token 时启用
+      ...(enableSentryPlugin
+        ? [
+            sentryVitePlugin({
+              org: env.SENTRY_ORG,
+              project: env.SENTRY_PROJECT,
+              authToken: process.env.SENTRY_AUTH_TOKEN!,
+              release: {
+                // Release 名必须和 SDK 里 Sentry.init 的 release 一致
+                // 用 VITE_APP_VERSION(本项目 CI 注入为 git commit SHA)
+                name: env.VITE_APP_VERSION,
+              },
+              sourcemaps: {
+                // 上传后删除本地 .map 文件,避免泄露源码到 R2
+                filesToDeleteAfterUpload: ['dist/**/*.map'],
+              },
+              telemetry: false,
+            }),
+          ]
+        : []),
+    ],
+    resolve: {
+      alias: {
+        '@': path.resolve(__dirname, './src'),
+      },
     },
-  },
-  server: {
-    port: 5173,
-    open: true,
-  },
-  build: {
-    outDir: 'dist',
-    sourcemap: false,
-  },
-  test: {
-    globals: true,
-    environment: 'jsdom',
-    setupFiles: ['./src/test/setup.ts'],
-    css: false,
-    coverage: {
-      provider: 'v8',
-      reporter: ['text', 'html'],
-      exclude: ['node_modules/', 'dist/', 'src/test/'],
+    server: {
+      port: 5173,
+      open: true,
     },
-  },
+    build: {
+      outDir: 'dist',
+      // 必须开 source map,Sentry 才能根据 source map 还原压缩后的错误堆栈到源码位置
+      sourcemap: true,
+    },
+    test: {
+      globals: true,
+      environment: 'jsdom',
+      setupFiles: ['./src/test/setup.ts'],
+      css: false,
+      coverage: {
+        provider: 'v8',
+        reporter: ['text', 'html'],
+        exclude: ['node_modules/', 'dist/', 'src/test/'],
+      },
+    },
+  }
 })

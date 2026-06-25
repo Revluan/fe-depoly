@@ -42,6 +42,15 @@ jobs:
       - run: npm run lint
       - run: npm run type-check
       - run: npm run build
+        env:
+          # Sentry:CI 构建时上传 source map,关联到 Release
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+          # VITE_ 开头的变量会注入到客户端代码
+          VITE_APP_ENV: production
+          VITE_APP_VERSION: ${{ github.sha }}
+          VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
 
       # 同步 dist/ 到 R2(--delete 清理旧文件)
       - name: Sync to R2
