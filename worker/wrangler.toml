@@ -16,3 +16,7 @@ preview_bucket_name = "fe-depoly-assets"
 # 环境变量(可选)
 [vars]
 ENVIRONMENT = "production"
+CURRENT_VERSION = "v1.0.0"
+DEPLOY_TIME = "2026-06-25"
+CANARY_PERCENT = "10"
+# API_ORIGIN = "https://your-backend.example.com"

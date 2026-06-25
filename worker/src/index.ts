@@ -1,6 +1,10 @@
 interface Env {
   ASSETS_BUCKET: R2Bucket
+  API_ORIGIN?: string
   ENVIRONMENT: string
+  CURRENT_VERSION?: string
+  DEPLOY_TIME?: string
+  CANARY_PERCENT?: string
 }
 
 // 静态资源长缓存(1 年),HTML 不缓存
@@ -27,47 +31,122 @@ const LONG_CACHE_EXTENSIONS = [
 ]
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url)
-    let path = url.pathname
-
-    // 1. 根路径 → index.html
-    if (path === '/') path = '/index.html'
-
-    // 2. 尝试从 R2 取对象
-    let object = await env.ASSETS_BUCKET.get(path.slice(1))
-
-    // 3. SPA 回退:对象不存在且不是静态文件 → 返回 index.html
-    const ext = path.split('.').pop()?.toLowerCase() || ''
-    if (!object && !LONG_CACHE_EXTENSIONS.includes(ext)) {
-      object = await env.ASSETS_BUCKET.get('index.html')
-      // 回退的响应用短缓存
-      if (object) {
-        return new Response(object.body, {
-          headers: buildHeaders(object, ext, true),
-        })
-      }
+    // 路径分流:/api/* 走 BFF,其他走静态资源 + HTML
+    if (url.pathname.startsWith('/api/')) {
+      return handleApi(request, env)
     }
-
-    // 4. 对象不存在 → 404
-    if (!object) {
-      return new Response('Not Found', { status: 404 })
-    }
-
-    // 5. 返回对象 + 缓存头
-    return new Response(object.body, {
-      headers: buildHeaders(object, ext, false),
-    })
+    return handleStatic(request, env, ctx)
   },
+}
+
+// 静态资源 + HTML + SPA 回退 + 边缘缓存 + 灰度注入
+async function handleStatic(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  const url = new URL(request.url)
+  let path = url.pathname
+  if (path === '/') path = '/index.html'
+
+  // 边缘缓存查询(只缓存 GET)
+  const cacheKey = new Request(request.url, { method: 'GET' })
+  const cache = caches.default
+  if (request.method === 'GET') {
+    const cached = await cache.match(cacheKey)
+    if (cached) return cached
+  }
+
+  // 从 R2 取对象
+  let object = await env.ASSETS_BUCKET.get(path.slice(1))
+  const ext = path.split('.').pop()?.toLowerCase() || ''
+
+  // SPA 回退:对象不存在且不是静态文件 → 返回 index.html
+  if (!object && !LONG_CACHE_EXTENSIONS.includes(ext)) {
+    object = await env.ASSETS_BUCKET.get('index.html')
+  }
+  if (!object) {
+    return new Response('Not Found', { status: 404 })
+  }
+
+  const isHtml = ext === 'html' || path === '/index.html'
+
+  // HTML 注入动态配置(灰度标识、版本、环境)
+  let body: ReadableStream<Uint8Array> | string = object.body
+  if (isHtml) {
+    const html = await object.text()
+    const userId = getUserIdFromRequest(request)
+    const inCanary = hashUserId(userId) % 100 < Number(env.CANARY_PERCENT || 0)
+    body = html.replace(
+      '</head>',
+      `<script>window.__APP_CONFIG__=${JSON.stringify({
+        env: env.ENVIRONMENT,
+        version: env.CURRENT_VERSION || 'unknown',
+        canary: inCanary,
+        deployTime: env.DEPLOY_TIME || 'unknown',
+      })};</script></head>`,
+    )
+  }
+
+  const response = new Response(body, { headers: buildHeaders(object, ext, isHtml) })
+
+  // 静态资源写入边缘缓存(HTML 不缓存,保证发版即时生效)
+  if (request.method === 'GET' && !isHtml) {
+    ctx.waitUntil(cache.put(cacheKey, response.clone()))
+  }
+
+  return response
+}
+
+// BFF:内置端点 + 反代外部后端
+async function handleApi(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url)
+  const path = url.pathname
+
+  if (path === '/api/health') {
+    return jsonResponse({ status: 'ok', env: env.ENVIRONMENT, ts: Date.now() })
+  }
+  if (path === '/api/version') {
+    return jsonResponse({
+      version: env.CURRENT_VERSION || 'unknown',
+      deployTime: env.DEPLOY_TIME || 'unknown',
+      canaryPercent: Number(env.CANARY_PERCENT || 0),
+    })
+  }
+
+  // 反代到外部后端(如果配置了 API_ORIGIN)
+  if (env.API_ORIGIN) {
+    const targetUrl = env.API_ORIGIN + path.replace('/api', '')
+    return fetch(targetUrl, request)
+  }
+
+  return jsonResponse({ message: 'Not Found' }, 404)
+}
+
+function jsonResponse(data: unknown, status = 200): Response {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { 'Content-Type': 'application/json; charset=utf-8' },
+  })
+}
+
+function getUserIdFromRequest(request: Request): string {
+  const cookie = request.headers.get('Cookie') || ''
+  const match = cookie.match(/user_id=([^;]+)/)
+  return match ? match[1] : 'anon-' + Math.random().toString(36).slice(2)
+}
+
+function hashUserId(userId: string): number {
+  let hash = 0
+  for (let i = 0; i < userId.length; i++) {
+    hash = (hash * 31 + userId.charCodeAt(i)) | 0
+  }
+  return Math.abs(hash)
 }
 
 function buildHeaders(object: R2ObjectBody, ext: string, isHtml: boolean): Headers {
   const headers = new Headers()
 
-  // Content-Type
   headers.set('Content-Type', getContentType(ext))
 
-  // 缓存策略:HTML 短缓存,静态资源长缓存
   if (isHtml || ext === 'html') {
     headers.set('Cache-Control', CACHE_SHORT)
     headers.set('Cache-Tag', 'html')
@@ -78,12 +157,10 @@ function buildHeaders(object: R2ObjectBody, ext: string, isHtml: boolean): Heade
     headers.set('Cache-Control', CACHE_SHORT)
   }
 
-  // ETag(R2 对象自带)
   if (object.httpEtag) {
     headers.set('ETag', object.httpEtag)
   }
 
-  // 安全头
   headers.set('X-Content-Type-Options', 'nosniff')
   headers.set('X-Frame-Options', 'DENY')
   headers.set('Referrer-Policy', 'strict-origin-when-cross-origin')
