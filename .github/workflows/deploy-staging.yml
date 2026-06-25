@@ -4,13 +4,14 @@
 name: Deploy Staging
 
 # ──────────────────────────────────────────────────────────────
-# 触发条件
+# 暂时停用:已切换到 Cloudflare R2 + Worker 部署(见 doc/cdn-cache.md)
+# Cloudflare Pages/Worker 自带 Preview 环境,替代了 Pages staging
+# 保留 workflow_dispatch 以便需要时手动触发
 # ──────────────────────────────────────────────────────────────
+
+# 触发条件
 on:
-  # 1. push 到 staging 分支自动触发
-  push:
-    branches: [staging]
-  # 2. 手动触发：在 Actions UI 点 "Run workflow" 按钮
+  # 只保留手动触发,不再自动跟 staging 分支部署
   workflow_dispatch:
 
 # 部署类 workflow 不要取消正在跑的旧 run

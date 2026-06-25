@@ -1,0 +1,18 @@
+name = "fe-depoly-edge"
+main = "src/index.ts"
+compatibility_date = "2026-06-01"
+
+# 绑定 R2 Bucket
+[[r2_buckets]]
+binding = "ASSETS_BUCKET"
+bucket_name = "fe-depoly-assets"
+preview_bucket_name = "fe-depoly-assets"
+
+# 自定义域名路由(部署后在 Dashboard 配,这里先注释)
+# routes = [
+#   { pattern = "app.example.com/*", custom_domain = true }
+# ]
+
+# 环境变量(可选)
+[vars]
+ENVIRONMENT = "production"

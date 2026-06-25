@@ -4,16 +4,13 @@
 name: Deploy Production
 
 # ──────────────────────────────────────────────────────────────
-# 触发条件
+# 暂时停用:已切换到 Cloudflare R2 + Worker 部署(见 doc/cdn-cache.md)
+# 保留 workflow_dispatch 以便需要时手动回滚到 Pages
 # ──────────────────────────────────────────────────────────────
+
+# 触发条件
 on:
-  # 1. push 形如 v1.0.0 / v0.2.3 的 tag 自动触发
-  #    通配符 v*.*.* 匹配 v主版本.次版本.修订号
-  push:
-    tags:
-      - 'v*.*.*'
-  # 2. 手动触发：在 Actions UI 填入要部署的 tag（例如 v1.0.0）
-  #    用于回滚到旧版本 —— 输入旧 tag 重新部署
+  # 只保留手动触发,不再自动跟 tag 部署
   workflow_dispatch:
     inputs:
       release:

@@ -44,3 +44,8 @@ coverage/
 # Misc
 *.local
 .DS_Store
+
+# Cloudflare Wrangler
+.wrangler/
+worker/node_modules/
+worker/.wrangler/

@@ -1,3 +1,9 @@
+# ──────────────────────────────────────────────────────────────
+# 暂时停用:已切换到 Cloudflare R2 + Worker 部署(见 doc/cdn-cache.md)
+# R2 + Worker 部署走独立的 deploy-r2-worker.yml,push main 即触发
+# Changesets 版本管理逻辑保留,但不再自动触发生产部署
+# ──────────────────────────────────────────────────────────────
+
 # Release 工作流：自动版本号 + Changelog + 打 tag
 # 作用：合入 main 后，如果有未消费的 changeset，自动创建一个 PR 改版本号和 CHANGELOG；
 #       合入该 PR 时，自动打 git tag，触发生产部署
@@ -12,9 +18,9 @@
 name: Release
 
 on:
-  # 只在 push 到 main 时跑（PR 合入触发）
-  push:
-    branches: [main]
+  # 暂时停用:不再在 push main 时自动跑 changesets
+  # 需要发版时手动触发
+  workflow_dispatch:
 
 # 不取消旧 run：版本管理需要串行，避免并发改版本号冲突
 concurrency:

@@ -1,9 +1,13 @@
+# ──────────────────────────────────────────────────────────────
+# 暂时停用:已切换到 Cloudflare R2 + Worker 部署(见 doc/cdn-cache.md)
+# SPA 不需要 Docker 镜像,Worker 直接从 R2 读静态资源
+# 保留 workflow_dispatch 以便后续需要 Docker 部署时手动触发
+# ──────────────────────────────────────────────────────────────
+
 name: Docker Build & Push
 
 on:
-  push:
-    branches: [main]
-    tags: ['v*.*.*']
+  # 只保留手动触发
   workflow_dispatch:
     inputs:
       tag:
