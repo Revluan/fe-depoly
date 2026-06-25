@@ -3,6 +3,20 @@ name: Deploy to R2 + Worker
 on:
   push:
     branches: [main]
+    # 只在影响部署产物的文件变更时触发,避免只改文档也跑 CI
+    paths:
+      - 'src/**'
+      - 'public/**'
+      - 'worker/**'
+      - 'scripts/**'
+      - 'index.html'
+      - 'vite.config.ts'
+      - 'vite.config.*.ts'
+      - 'tsconfig.json'
+      - 'tsconfig.*.json'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/deploy-r2-worker.yml'
   workflow_dispatch:
 
 env:
