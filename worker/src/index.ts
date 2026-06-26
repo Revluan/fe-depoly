@@ -1,5 +1,6 @@
 interface Env {
   ASSETS_BUCKET: R2Bucket
+  GRAY_RULES: KVNamespace
   API_ORIGIN?: string
   ENVIRONMENT: string
   CURRENT_VERSION?: string
@@ -7,11 +8,25 @@ interface Env {
   CANARY_PERCENT?: string
 }
 
-// 静态资源长缓存(1 年),HTML 不缓存
+interface GrayRule {
+  type: 'userIdList' | 'percent' | 'header'
+  values?: string[]
+  value?: number
+  headerKey?: string
+  headerValues?: string[]
+}
+
+interface GrayRelease {
+  id: string
+  name: string
+  artifactId: string
+  status: 'draft' | 'running' | 'paused' | 'finished' | 'rolled-back'
+  rules: GrayRule[]
+}
+
 const CACHE_LONG = 'public, max-age=31536000, immutable'
 const CACHE_SHORT = 'public, max-age=0, must-revalidate'
 
-// 需要长缓存的文件类型(hash 文件名才安全)
 const LONG_CACHE_EXTENSIONS = [
   'js',
   'css',
@@ -33,7 +48,6 @@ const LONG_CACHE_EXTENSIONS = [
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url)
-    // 路径分流:/api/* 走 BFF,其他走静态资源 + HTML
     if (url.pathname.startsWith('/api/')) {
       return handleApi(request, env)
     }
@@ -41,46 +55,72 @@ export default {
   },
 }
 
-// 静态资源 + HTML + SPA 回退 + 边缘缓存 + 灰度注入
 async function handleStatic(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const url = new URL(request.url)
   let path = url.pathname
   if (path === '/') path = '/index.html'
 
-  // 边缘缓存查询(只缓存 GET)
+  // 边缘缓存查询(只缓存 GET,且 HTML 不缓存)
   const cacheKey = new Request(request.url, { method: 'GET' })
   const cache = caches.default
-  if (request.method === 'GET') {
+  const isHtml = path === '/index.html' || path.endsWith('.html')
+  if (request.method === 'GET' && !isHtml) {
     const cached = await cache.match(cacheKey)
     if (cached) return cached
   }
 
-  // 从 R2 取对象
-  let object = await env.ASSETS_BUCKET.get(path.slice(1))
+  // 提取 userId,查灰度规则
+  const userId = getUserIdFromRequest(request)
+  const release = await matchGrayRelease(userId, request, env)
+
+  // 决定用哪份产物:命中灰度用 release.artifactId,否则读 KV current-artifact
+  let artifactId: string | null
+  if (release) {
+    artifactId = release.artifactId
+  } else {
+    artifactId = await env.GRAY_RULES.get('current-artifact')
+  }
+
+  // 优先从 artifacts/{artifactId}/ 取,取不到 fallback 到根目录(过渡期安全网)
+  // fallback 情况:KV 还没写、artifactId 对应目录不存在(产物缺失)、本地 dev 没传 KV
+  let object: R2ObjectBody | null = null
+  if (artifactId) {
+    object = await env.ASSETS_BUCKET.get(`artifacts/${artifactId}${path}`)
+  }
+  if (!object) {
+    object = await env.ASSETS_BUCKET.get(path.slice(1))
+  }
+
   const ext = path.split('.').pop()?.toLowerCase() || ''
 
-  // SPA 回退:对象不存在且不是静态文件 → 返回 index.html
+  // SPA 回退:对象不存在且不是静态文件 → 用对应 artifactId 的 index.html
   if (!object && !LONG_CACHE_EXTENSIONS.includes(ext)) {
-    object = await env.ASSETS_BUCKET.get('index.html')
+    if (artifactId) {
+      object = await env.ASSETS_BUCKET.get(`artifacts/${artifactId}/index.html`)
+    }
+    if (!object) {
+      object = await env.ASSETS_BUCKET.get('index.html')
+    }
   }
   if (!object) {
     return new Response('Not Found', { status: 404 })
   }
 
-  const isHtml = ext === 'html' || path === '/index.html'
-
-  // HTML 注入动态配置(灰度标识、版本、环境)
+  // HTML 注入动态配置(灰度标识、版本、产物 ID)
   let body: ReadableStream<Uint8Array> | string = object.body
   if (isHtml) {
     const html = await object.text()
-    const userId = getUserIdFromRequest(request)
-    const inCanary = hashUserId(userId) % 100 < Number(env.CANARY_PERCENT || 0)
+    const fallbackArtifactId = env.CURRENT_VERSION || 'unknown'
+    const finalArtifactId = artifactId || fallbackArtifactId
     body = html.replace(
       '</head>',
       `<script>window.__APP_CONFIG__=${JSON.stringify({
         env: env.ENVIRONMENT,
         version: env.CURRENT_VERSION || 'unknown',
-        canary: inCanary,
+        artifactId: finalArtifactId,
+        releaseId: release?.id || null,
+        releaseName: release?.name || null,
+        canary: !!release,
         deployTime: env.DEPLOY_TIME || 'unknown',
       })};</script></head>`,
     )
@@ -88,7 +128,6 @@ async function handleStatic(request: Request, env: Env, ctx: ExecutionContext): 
 
   const response = new Response(body, { headers: buildHeaders(object, ext, isHtml) })
 
-  // 静态资源写入边缘缓存(HTML 不缓存,保证发版即时生效)
   if (request.method === 'GET' && !isHtml) {
     ctx.waitUntil(cache.put(cacheKey, response.clone()))
   }
@@ -96,7 +135,58 @@ async function handleStatic(request: Request, env: Env, ctx: ExecutionContext): 
   return response
 }
 
-// BFF:内置端点 + 反代外部后端
+// 查所有活跃灰度,看命中哪条。优先级:按 active-releases 顺序,先命中先返回
+// 规则类型优先级:userIdList > header > percent(在 matchRule 内部按规则顺序短路)
+async function matchGrayRelease(
+  userId: string,
+  request: Request,
+  env: Env,
+): Promise<GrayRelease | null> {
+  const raw = await env.GRAY_RULES.get('active-releases', 'json')
+  if (raw == null) return null
+
+  let releases: GrayRelease[] = []
+  if (Array.isArray(raw)) {
+    const first = raw[0] as unknown
+    if (typeof first === 'string') {
+      // 字符串数组:逐个取 release:{id}
+      const ids = raw as unknown as string[]
+      const results = await Promise.all(
+        ids.map((id) => env.GRAY_RULES.get<GrayRelease>(`release:${id}`, 'json')),
+      )
+      releases = results.filter((r): r is GrayRelease => r != null)
+    } else {
+      // 已经是对象数组
+      releases = raw as unknown as GrayRelease[]
+    }
+  }
+
+  for (const release of releases) {
+    if (release.status !== 'running') continue
+    for (const rule of release.rules || []) {
+      if (matchRule(rule, userId, request)) {
+        return release
+      }
+    }
+  }
+  return null
+}
+
+function matchRule(rule: GrayRule, userId: string, request: Request): boolean {
+  switch (rule.type) {
+    case 'userIdList':
+      return rule.values?.includes(userId) ?? false
+    case 'percent':
+      return hashUserId(userId) % 100 < (rule.value ?? 0)
+    case 'header': {
+      const hv = request.headers.get(rule.headerKey || '')?.toLowerCase()
+      return hv ? (rule.headerValues || []).map((v) => v.toLowerCase()).includes(hv) : false
+    }
+    default:
+      return false
+  }
+}
+
 async function handleApi(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url)
   const path = url.pathname
@@ -105,14 +195,15 @@ async function handleApi(request: Request, env: Env): Promise<Response> {
     return jsonResponse({ status: 'ok', env: env.ENVIRONMENT, ts: Date.now() })
   }
   if (path === '/api/version') {
+    const currentArtifact = await env.GRAY_RULES.get('current-artifact')
     return jsonResponse({
       version: env.CURRENT_VERSION || 'unknown',
+      artifactId: currentArtifact || env.CURRENT_VERSION || 'unknown',
       deployTime: env.DEPLOY_TIME || 'unknown',
       canaryPercent: Number(env.CANARY_PERCENT || 0),
     })
   }
 
-  // 反代到外部后端(如果配置了 API_ORIGIN)
   if (env.API_ORIGIN) {
     const targetUrl = env.API_ORIGIN + path.replace('/api', '')
     return fetch(targetUrl, request)

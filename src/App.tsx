@@ -7,6 +7,9 @@ declare global {
     __APP_CONFIG__?: {
       env: string
       version: string
+      artifactId: string
+      releaseId: string | null
+      releaseName: string | null
       canary: boolean
       deployTime: string
     }
@@ -46,6 +49,10 @@ function App() {
           <p>
             Version: {config?.version ?? 'unknown'} · Env: {config?.env ?? 'unknown'} · Deploy:{' '}
             {config?.deployTime ?? 'unknown'}
+          </p>
+          <p>
+            Artifact: {config?.artifactId ?? 'unknown'}
+            {config?.releaseId ? ` · Release: ${config.releaseName ?? config.releaseId}` : ''}
           </p>
         </header>
         <main className="app-main">
