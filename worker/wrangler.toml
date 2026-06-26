@@ -8,6 +8,15 @@ binding = "ASSETS_BUCKET"
 bucket_name = "fe-depoly-assets"
 preview_bucket_name = "fe-depoly-assets"
 
+# 绑定 KV Namespace:存灰度规则、当前全量版本指针、产物元数据
+# binding 名 GRAY_RULES 跟 Worker 代码里 env.GRAY_RULES 对应
+# id 必须填,否则 wrangler deploy 会移除 Dashboard 上配的 binding(以 toml 为准)
+# TODO: 把下面两个 id 换成你的真实 namespace ID(Dashboard → Workers & Pages → KV → 详情页可查)
+[[kv_namespaces]]
+binding = "GRAY_RULES"
+id = "69d9d16026c6439bb4e4735bd76fd2ee"
+preview_id = "69d9d16026c6439bb4e4735bd76fd2ee"
+
 # 自定义域名路由(部署后在 Dashboard 配,这里先注释)
 # routes = [
 #   { pattern = "app.example.com/*", custom_domain = true }

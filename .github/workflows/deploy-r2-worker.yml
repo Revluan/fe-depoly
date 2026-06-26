@@ -38,6 +38,17 @@ jobs:
           node-version: '22'
           cache: npm
 
+      # 计算 BUILD_ID:build-{run_id}-{sha:7}
+      # 用作 VITE_APP_VERSION、Sentry Release、Worker CURRENT_VERSION,统一版本标识
+      # 后续灰度平台用这个 ID 索引产物(见 doc/gary-by-userId.md)
+      - name: Compute BUILD_ID
+        id: build-id
+        run: |
+          SHORT_SHA=${GITHUB_SHA::7}
+          BUILD_ID="build-${{ github.run_id }}-${SHORT_SHA}"
+          echo "BUILD_ID=${BUILD_ID}" >> "$GITHUB_OUTPUT"
+          echo "BUILD_ID=${BUILD_ID}"
+
       - run: npm ci
       - run: npm run lint
       - run: npm run type-check
@@ -49,19 +60,37 @@ jobs:
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
           # VITE_ 开头的变量会注入到客户端代码
           VITE_APP_ENV: production
-          VITE_APP_VERSION: ${{ github.sha }}
+          # 版本号用 BUILD_ID(不再是纯 SHA),与产物 ID 对齐,便于灰度平台索引
+          VITE_APP_VERSION: ${{ steps.build-id.outputs.BUILD_ID }}
           VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
 
-      # 同步 dist/ 到 R2(--delete 清理旧文件)
+      # 同步 dist/ 到 R2(不再 --delete,保留旧 hash 文件)
+      # 原因:灰度需要新旧产物共存,旧用户浏览器缓存了旧 HTML 引用旧 hash JS,
+      #   如果 --delete 删了旧 JS,旧用户白屏。后续 Worker 改造后会按 artifacts/{buildId}/ 隔离
       - name: Sync to R2
         run: |
           aws s3 sync dist/ s3://fe-depoly-assets/ \
-            --delete \
             --cache-control "public, max-age=31536000, immutable" \
             --exclude "index.html" \
             --endpoint-url "$AWS_ENDPOINT_URL"
           # index.html 单独上传,短缓存
           aws s3 cp dist/index.html s3://fe-depoly-assets/index.html \
+            --cache-control "public, max-age=0, must-revalidate" \
+            --content-type "text/html; charset=utf-8" \
+            --endpoint-url "$AWS_ENDPOINT_URL"
+
+      # 多版本共存:同时上传一份到 artifacts/{BUILD_ID}/
+      # 原因:Worker 改造后会从 artifacts/{buildId}/ 取产物,实现"按 buildId 选版本"
+      #   根目录继续写,保证 Worker 改造前站点正常工作(过渡期安全网)
+      #   不 --delete,所有历史 buildId 都保留,可任意回滚
+      - name: Sync to R2 (versioned under artifacts/)
+        run: |
+          BUILD_ID="${{ steps.build-id.outputs.BUILD_ID }}"
+          aws s3 sync dist/ "s3://fe-depoly-assets/artifacts/${BUILD_ID}/" \
+            --cache-control "public, max-age=31536000, immutable" \
+            --exclude "index.html" \
+            --endpoint-url "$AWS_ENDPOINT_URL"
+          aws s3 cp dist/index.html "s3://fe-depoly-assets/artifacts/${BUILD_ID}/index.html" \
             --cache-control "public, max-age=0, must-revalidate" \
             --content-type "text/html; charset=utf-8" \
             --endpoint-url "$AWS_ENDPOINT_URL"
@@ -72,8 +101,22 @@ jobs:
         run: |
           npm ci
           npx wrangler deploy \
-            --var CURRENT_VERSION:${{ github.sha }} \
+            --var CURRENT_VERSION:${{ steps.build-id.outputs.BUILD_ID }} \
             --var DEPLOY_TIME:$(date -u +%Y-%m-%dT%H:%M:%SZ)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      # 在 KV 里写入 current-artifact 指针,指向本次构建的 BUILD_ID
+      # Worker 改造后会读这个 key 决定全量版本用哪份产物(见 doc/gary-by-userId.md)
+      # 注意:CLOUDFLARE_API_TOKEN 需要有 Workers KV Storage: Edit 权限
+      #   Dashboard → My Profile → API Tokens → 编辑该 token → 确认权限
+      - name: Set current-artifact in KV
+        working-directory: worker
+        run: |
+          npx wrangler kv key put current-artifact "${{ steps.build-id.outputs.BUILD_ID }}" \
+            --binding GRAY_RULES \
+            --remote
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
