@@ -9,3 +9,349 @@
   color: #6b7280;
   font-size: 0.9rem;
 }
+
+/* 灰度管理按钮(主页入口) */
+.app-main .btn-admin {
+  border: 1px solid #646cff;
+  background: transparent;
+  color: #646cff;
+  margin-top: 1rem;
+}
+
+.app-main .btn-admin:hover {
+  background: #646cff;
+  color: #fff;
+}
+
+/* ============ Admin 页面 ============ */
+.admin-page {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+  text-align: left;
+}
+
+.admin-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+}
+
+.admin-header h1 {
+  font-size: 1.8rem;
+  margin: 0;
+}
+
+.admin-header button,
+.admin-toolbar button {
+  border: 1px solid #646cff;
+  background: transparent;
+  color: #646cff;
+  padding: 0.4em 0.9em;
+  font-size: 0.9rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.admin-header button:hover,
+.admin-toolbar button:hover {
+  background: #646cff;
+  color: #fff;
+}
+
+.admin-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.admin-toolbar .btn-primary {
+  border: 1px solid #646cff;
+  background: #646cff;
+  color: #fff;
+}
+
+.admin-toolbar .btn-primary:hover {
+  background: #535bf2;
+}
+
+.admin-count {
+  color: #6b7280;
+  font-size: 0.85rem;
+}
+
+/* ============ 表格 ============ */
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.admin-table th,
+.admin-table td {
+  border: 1px solid #e5e7eb;
+  padding: 0.6rem 0.75rem;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.admin-table th {
+  background: #f9fafb;
+  font-weight: 500;
+  color: #374151;
+}
+
+.admin-table tbody tr:hover {
+  background: #f9fafb;
+}
+
+.cell-id {
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+
+.cell-rules {
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-size: 0.8rem;
+}
+
+/* ============ 状态徽章 ============ */
+.admin-badge {
+  display: inline-block;
+  padding: 0.15em 0.6em;
+  border-radius: 12px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.admin-badge.status-running {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.admin-badge.status-paused,
+.admin-badge.status-rolled-back {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.admin-badge.status-finished {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.admin-badge.status-draft {
+  background: #e5e7eb;
+  color: #6b7280;
+}
+
+/* ============ 弹窗 ============ */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 1rem;
+}
+
+.modal {
+  background: #fff;
+  border-radius: 10px;
+  padding: 1.5rem 2rem;
+  width: 100%;
+  max-width: 560px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+}
+
+.modal h2 {
+  margin: 0 0 1.2rem;
+  font-size: 1.3rem;
+}
+
+/* ============ 表单 ============ */
+.form-field {
+  margin-bottom: 1rem;
+}
+
+.form-field label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  color: #374151;
+  margin-bottom: 0.4rem;
+}
+
+.form-field input[type='text'],
+.form-field input[type='number'],
+.form-field select,
+.form-field textarea {
+  width: 100%;
+  padding: 0.5em 0.7em;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-family: inherit;
+}
+
+.form-field input:focus,
+.form-field select:focus,
+.form-field textarea:focus {
+  outline: none;
+  border-color: #646cff;
+}
+
+.form-field textarea {
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  resize: vertical;
+}
+
+.form-field .hint {
+  color: #9ca3af;
+  font-size: 0.85rem;
+  margin: 0.4rem 0 0;
+}
+
+/* ============ 规则行 ============ */
+.rule-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.rule-row {
+  display: grid;
+  grid-template-columns: 130px 1fr auto;
+  gap: 0.5rem;
+  align-items: start;
+  padding: 0.6rem;
+  background: #f9fafb;
+  border-radius: 6px;
+}
+
+.rule-row select {
+  padding: 0.4em 0.5em;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 0.85rem;
+}
+
+.rule-row textarea {
+  padding: 0.4em 0.5em;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  min-height: 70px;
+}
+
+.rule-row input {
+  padding: 0.4em 0.5em;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 0.85rem;
+}
+
+.header-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+/* ============ 按钮 ============ */
+.btn-small {
+  padding: 0.25em 0.6em !important;
+  font-size: 0.78rem !important;
+}
+
+.btn-primary {
+  border: 1px solid #646cff;
+  background: #646cff;
+  color: #fff;
+  padding: 0.5em 1.1em;
+  font-size: 0.9rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.btn-primary:hover {
+  background: #535bf2;
+}
+
+.btn-primary:disabled {
+  background: #c7d2fe;
+  border-color: #c7d2fe;
+  cursor: not-allowed;
+}
+
+.btn-danger {
+  border: 1px solid #ef4444;
+  background: transparent;
+  color: #ef4444;
+  padding: 0.5em 1.1em;
+  font-size: 0.9rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.btn-danger:hover {
+  background: #ef4444;
+  color: #fff;
+}
+
+.btn-danger:disabled {
+  border-color: #fca5a5;
+  color: #fca5a5;
+  cursor: not-allowed;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e5e7eb;
+}
+
+.modal-actions button {
+  padding: 0.5em 1.1em;
+  font-size: 0.9rem;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  color: #374151;
+}
+
+.modal-actions button:hover {
+  background: #f3f4f6;
+}
+
+.modal-actions button:disabled {
+  color: #9ca3af;
+  cursor: not-allowed;
+}
+
+/* ============ 通用 ============ */
+.error {
+  color: #dc2626;
+  font-size: 0.85rem;
+  margin: 0.5rem 0;
+  padding: 0.5rem 0.75rem;
+  background: #fef2f2;
+  border-radius: 4px;
+}

@@ -204,12 +204,174 @@ async function handleApi(request: Request, env: Env): Promise<Response> {
     })
   }
 
+  // Admin API:灰度规则 CRUD。完全开放,无鉴权(学习项目,生产环境加 token 校验)
+  if (path.startsWith('/api/admin/')) {
+    return handleAdmin(request, env, path)
+  }
+
   if (env.API_ORIGIN) {
     const targetUrl = env.API_ORIGIN + path.replace('/api', '')
     return fetch(targetUrl, request)
   }
 
   return jsonResponse({ message: 'Not Found' }, 404)
+}
+
+// Admin API 路由分发
+// 路由表:
+//   GET    /api/admin/artifacts          扫 R2 artifacts/ 列出所有 buildId
+//   GET    /api/admin/releases           读 KV active-releases 数组
+//   POST   /api/admin/releases           新建 release,append 到 active-releases
+//   PATCH  /api/admin/releases/:id       更新指定 release
+//   DELETE /api/admin/releases/:id       删除指定 release
+async function handleAdmin(request: Request, env: Env, path: string): Promise<Response> {
+  const method = request.method
+
+  // 产物列表
+  if (path === '/api/admin/artifacts' && method === 'GET') {
+    return jsonResponse({ artifacts: await listArtifacts(env) })
+  }
+
+  // 灰度列表
+  if (path === '/api/admin/releases' && method === 'GET') {
+    return jsonResponse({ releases: await listReleases(env) })
+  }
+
+  // 新建灰度
+  if (path === '/api/admin/releases' && method === 'POST') {
+    const body = (await parseJsonBody(request)) as Partial<GrayRelease> | null
+    if (!body) return jsonResponse({ error: 'invalid body' }, 400)
+    const release = await createRelease(env, body)
+    return jsonResponse({ release }, 201)
+  }
+
+  // 单条灰度操作(更新 / 删除)
+  const match = path.match(/^\/api\/admin\/releases\/([^/]+)$/)
+  if (match) {
+    const id = decodeURIComponent(match[1])
+    if (method === 'PATCH') {
+      const body = (await parseJsonBody(request)) as Partial<GrayRelease> | null
+      if (!body) return jsonResponse({ error: 'invalid body' }, 400)
+      const release = await updateRelease(env, id, body)
+      if (!release) return jsonResponse({ error: 'release not found' }, 404)
+      return jsonResponse({ release })
+    }
+    if (method === 'DELETE') {
+      const deleted = await deleteRelease(env, id)
+      if (!deleted) return jsonResponse({ error: 'release not found' }, 404)
+      return jsonResponse({ ok: true })
+    }
+  }
+
+  return jsonResponse({ error: 'not found' }, 404)
+}
+
+// 扫 R2 artifacts/ 前缀,提取所有 buildId(去重)
+// 单次 list 最多 1000 个对象,一个 buildId 目录通常 5-20 个文件,够覆盖 50+ 个构建
+// 超出要加 cursor 翻页,本项目暂不处理
+async function listArtifacts(env: Env): Promise<string[]> {
+  const listed = await env.ASSETS_BUCKET.list({ prefix: 'artifacts/', limit: 1000 })
+  const buildIds = new Set<string>()
+  for (const obj of listed.objects) {
+    const m = obj.key.match(/^artifacts\/([^/]+)\//)
+    if (m) buildIds.add(m[1])
+  }
+  return [...buildIds].sort().reverse()
+}
+
+async function listReleases(env: Env): Promise<GrayRelease[]> {
+  const releases = await env.GRAY_RULES.get<GrayRelease[]>('active-releases', 'json')
+  return Array.isArray(releases) ? releases : []
+}
+
+// 并发写风险:KV 是最终一致,两个并发 POST 可能丢一条
+// 学习项目可接受,生产环境用 Durable Object 串行化或加版本号
+async function writeReleases(env: Env, releases: GrayRelease[]): Promise<void> {
+  await env.GRAY_RULES.put('active-releases', JSON.stringify(releases))
+}
+
+async function createRelease(env: Env, body: Partial<GrayRelease>): Promise<GrayRelease> {
+  const releases = await listReleases(env)
+  const now = Date.now()
+  const random = Math.random().toString(36).slice(2, 6)
+  const release: GrayRelease = {
+    id: `exp-${now}-${random}`,
+    name: body.name?.trim() || `release-${now}`,
+    artifactId: body.artifactId || '',
+    status: body.status || 'draft',
+    rules: Array.isArray(body.rules)
+      ? body.rules.map(normalizeRule).filter((r): r is GrayRule => r !== null)
+      : [],
+  }
+  releases.push(release)
+  await writeReleases(env, releases)
+  return release
+}
+
+async function updateRelease(
+  env: Env,
+  id: string,
+  body: Partial<GrayRelease>,
+): Promise<GrayRelease | null> {
+  const releases = await listReleases(env)
+  const idx = releases.findIndex((r) => r.id === id)
+  if (idx === -1) return null
+  const current = releases[idx]
+  const updated: GrayRelease = {
+    id: current.id,
+    name: body.name?.trim() || current.name,
+    artifactId: body.artifactId || current.artifactId,
+    status: body.status || current.status,
+    rules: Array.isArray(body.rules)
+      ? body.rules.map(normalizeRule).filter((r): r is GrayRule => r !== null)
+      : current.rules,
+  }
+  releases[idx] = updated
+  await writeReleases(env, releases)
+  return updated
+}
+
+async function deleteRelease(env: Env, id: string): Promise<boolean> {
+  const releases = await listReleases(env)
+  const next = releases.filter((r) => r.id !== id)
+  if (next.length === releases.length) return false
+  await writeReleases(env, next)
+  return true
+}
+
+// 规范化规则:校验 + 清理,返回 null 表示无效
+function normalizeRule(rule: Partial<GrayRule> | null | undefined): GrayRule | null {
+  if (!rule || !rule.type) return null
+  switch (rule.type) {
+    case 'userIdList':
+      if (!Array.isArray(rule.values) || rule.values.length === 0) return null
+      return {
+        type: 'userIdList',
+        values: rule.values.map((v) => String(v).trim()).filter(Boolean),
+      }
+    case 'percent':
+      if (typeof rule.value !== 'number' || rule.value < 0 || rule.value > 100) return null
+      return { type: 'percent', value: rule.value }
+    case 'header':
+      if (!rule.headerKey || !Array.isArray(rule.headerValues) || rule.headerValues.length === 0) {
+        return null
+      }
+      return {
+        type: 'header',
+        headerKey: String(rule.headerKey).trim(),
+        headerValues: rule.headerValues.map((v) => String(v).trim()).filter(Boolean),
+      }
+    default:
+      return null
+  }
+}
+
+async function parseJsonBody(request: Request): Promise<unknown> {
+  try {
+    return await request.json()
+  } catch {
+    return null
+  }
 }
 
 function jsonResponse(data: unknown, status = 200): Response {

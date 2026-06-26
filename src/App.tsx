@@ -1,5 +1,6 @@
 import * as Sentry from '@sentry/react'
 import { useState } from 'react'
+import { AdminPage } from './AdminPage'
 import './App.css'
 
 declare global {
@@ -16,9 +17,12 @@ declare global {
   }
 }
 
+type View = 'app' | 'admin'
+
 function App() {
   const [count, setCount] = useState(0)
   const [apiResult, setApiResult] = useState('')
+  const [view, setView] = useState<View>('app')
   const config = window.__APP_CONFIG__
 
   const triggerError = () => {
@@ -33,6 +37,19 @@ function App() {
     } catch (err) {
       setApiResult(`Error: ${err instanceof Error ? err.message : String(err)}`)
     }
+  }
+
+  if (view === 'admin') {
+    return (
+      <Sentry.ErrorBoundary
+        fallback={<div style={{ padding: 20 }}>页面出错了,请刷新重试</div>}
+        onError={(error, componentStack) => {
+          console.error('Caught by ErrorBoundary:', error, componentStack)
+        }}
+      >
+        <AdminPage onBack={() => setView('app')} />
+      </Sentry.ErrorBoundary>
+    )
   }
 
   return (
@@ -59,6 +76,9 @@ function App() {
           <button onClick={() => setCount((c) => c + 1)}>count is {count}</button>
           <button onClick={triggerError}>Trigger Error</button>
           <button onClick={callApi}>Call BFF</button>
+          <button className="btn-admin" onClick={() => setView('admin')}>
+            灰度管理
+          </button>
           <p>当前环境：{import.meta.env.MODE}</p>
           <p>BFF Response: {apiResult || '(尚未调用)'}</p>
         </main>
