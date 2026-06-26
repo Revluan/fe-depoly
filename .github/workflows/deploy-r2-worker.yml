@@ -111,11 +111,13 @@ jobs:
       # Worker 改造后会读这个 key 决定全量版本用哪份产物(见 doc/gary-by-userId.md)
       # 注意:CLOUDFLARE_API_TOKEN 需要有 Workers KV Storage: Edit 权限
       #   Dashboard → My Profile → API Tokens → 编辑该 token → 确认权限
+      # --preview false: 明确写生产 namespace(非 preview_id),wrangler 要求显式指定
       - name: Set current-artifact in KV
         working-directory: worker
         run: |
           npx wrangler kv key put current-artifact "${{ steps.build-id.outputs.BUILD_ID }}" \
             --binding GRAY_RULES \
+            --preview false \
             --remote
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
