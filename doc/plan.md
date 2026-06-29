@@ -56,7 +56,7 @@
 - [ ] 接入 Web Vitals 上报（LCP / CLS / INP）
 - [x] 产物体积分析（rollup-plugin-visualizer）👉 [doc/bundle-analysis.md](./bundle-analysis.md)
 - [ ] 代码分割与按需加载
-- [ ] Tree Shaking 与依赖外置
+- [x] Tree Shaking 与依赖外置 👉 [doc/tree-shaking-externals.md](./tree-shaking-externals.md)
 - [ ] 图片资源优化（WebP / AVIF / 响应式图片）
 - [x] 接入 Sentry / 自建错误监控 👉 [doc/sentry.md](./sentry.md)
 

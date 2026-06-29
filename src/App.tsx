@@ -62,7 +62,7 @@ function App() {
       <div className="app">
         <header className="app-header">
           <h1>FE Deploy {config?.canary ? '(Canary)' : ''}</h1>
-          <p>前端工程化实践项目 · 混合部署</p>
+          <p>前端工程化实践项目 · 混合部署 · 多 chunk 验证</p>
           <p>
             Version: {config?.version ?? 'unknown'} · Env: {config?.env ?? 'unknown'} · Deploy:{' '}
             {config?.deployTime ?? 'unknown'}
