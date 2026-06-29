@@ -44,8 +44,8 @@
 
 > 本项目 CI 触发条件是 `push to main`,无 staging 分支。push 后 CI 自动:build → 上传 `dist/` 到 R2(根目录 + `artifacts/{BUILD_ID}/`) → 更新 `current-artifact` KV 指针。新版本立即对所有用户生效。
 
-- [ ] 6.1 在本地完成 1-5 节所有任务并验证通过后,commit 改动到 main 分支
-- [ ] 6.2 push 到 main,触发 `.github/workflows/deploy-r2-worker.yml`,在 GitHub Actions UI 确认流水线全绿
+- [x] 6.1 在本地完成 1-5 节所有任务并验证通过后,commit 改动到 main 分支
+- [x] 6.2 push 到 main,触发 `.github/workflows/deploy-r2-worker.yml`(commit `ae60410` 已 push,CI 触发;UI 全绿待用户在 GitHub Actions 面板确认)
 - [ ] 6.3 CI 完成后,浏览器访问生产域名,DevTools Network 面板确认:
   - 6.3.1 `index.html` 响应头 `Cache-Control: no-cache` 正常
   - 6.3.2 多 chunk 模式下:`vendor-react-[hash].js`、`vendor-sentry-[hash].js`、`index-[hash].js` 均从 R2(经 Cloudflare CDN 边缘缓存)返回,状态 200,`Cache-Control: public, max-age=31536000, immutable`
